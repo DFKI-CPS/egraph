@@ -11,6 +11,8 @@ lib_managed/
 src_managed/
 project/boot/
 project/plugins/project/
+
+# IntelliJ IDEA specific
 .idea/
 
 # Scala-IDE specific
