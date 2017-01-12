@@ -2,31 +2,46 @@ package de.dfki.cps.egraph
 
 import java.io.{File, InputStream, OutputStream}
 import java.util
+import java.util.concurrent.Executor
 
 import de.dfki.cps.egraph.internal.NodeList
 import org.eclipse.emf.common.util.{EList, URI}
-import org.eclipse.emf.ecore.{EClass, EFactory, EObject, EcoreFactory}
+import org.eclipse.emf.ecore.{EClass, EFactory, EObject, EOperation, EReference, EStructuralFeature, EcoreFactory}
 import org.eclipse.emf.ecore.resource.impl.{ResourceImpl, ResourceSetImpl}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import internal.Util._
+import org.eclipse.emf.common.notify.Notification
 import org.eclipse.emf.ecore.util.EcoreUtil
 import org.neo4j.graphdb.{Direction, Node}
 
 import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 /**
   * @author Martin Ring <martin.ring@dfki.de>
   */
 class GraphResource(uri: URI) extends ResourceImpl(uri) {
+  implicit private val executionContext = ExecutionContext.fromExecutor(new Executor {
+    def execute(command: Runnable) = command.run()
+  })
+
   implicit val defaultTimeout = Duration.Inf
 
   val nodeMap = mutable.Map.empty[EObject,Node]
 
-  private def readValueNode(node: Node): AnyRef = {
-    if (node.hasLabel(Labels.EObject)) readEObjectNode(node)
-    else node.getProperty("value")
+  val uriRequests = mutable.Map.empty[URI,EObject => Any]
+
+  private def readValueNode(node: Node): Future[AnyRef] = {
+    if (node.hasLabel(Labels.EObject)) Future.successful(readEObjectNode(node))
+    else if (node.hasLabel(Labels.Reference)) {
+      val uri = URI.createURI(node.getProperty("uri").asInstanceOf[String])
+      val p = Promise[EObject]
+      uriRequests += uri -> p.success
+      p.future
+    }
+    else Future.successful(node.getProperty("value"))
   }
 
   private def readEObjectNode(node: Node): EObject = {
@@ -42,7 +57,11 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       .filter(f => !f.isTransient && !f.isDerived).foreach { feature =>
       if (feature.isMany) {
         manyProps.get(feature.getName).foreach { values =>
-          x.eGet(feature).asInstanceOf[EList[AnyRef]].addAll(values.map(readValueNode).asJava)
+          val vals = Future.sequence(values.map(readValueNode)).map(_.asJava)
+          vals.onSuccess {
+            case vals =>
+              x.eGet(feature).asInstanceOf[EList[AnyRef]].addAll(vals)
+          }
         }
       } else props.get(feature.getName).foreach { value =>
         x.eSet(feature,value)
@@ -62,12 +81,21 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
           val contents = new NodeList(root.getSingleRelationship(Relations.Contents,Direction.OUTGOING).getEndNode)
           this.contents.addAll(contents.map(readEObjectNode).asJava)
         }
+        uriRequests.foreach {
+          case (uri,f) =>
+            val x = resourceSet.getEObject(uri,true)
+            if (x == null) sys.error("unresolvable uri " + uri)
+            f(x)
+        }
       }.get
     } else super.doLoad(inputStream,options)
   }
 
-  private def createValueNode(store: EGraphStore)(obj: AnyRef): Node = obj match {
-    case proxy: EObject if proxy.eIsProxy() => ???
+  private def createValueNode(store: EGraphStore, parent: EObject)(obj: AnyRef): Node = obj match {
+    case ref: EObject if ref.eContainer() != parent =>
+      val node = store.graphDb.createNode(Labels.Reference)
+      node.setProperty("uri",EcoreUtil.getURI(ref).toString)
+      node
     case eObj: EObject => createEObjectNode(store)(eObj)
     case other: AnyRef =>
       val node = store.graphDb.createNode(Labels.Literal)
@@ -87,7 +115,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
         val rel = node.createRelationshipTo(listNode,Relations.Feature)
         rel.setProperty("name",feature.getName)
         val values = obj.eGet(feature).asInstanceOf[EList[AnyRef]].asScala
-        list.appendAll(values.map(createValueNode(store)))
+        list.appendAll(values.map(createValueNode(store,obj)))
       } else {
         val value = obj.eGet(feature) match {
           case i: java.lang.Integer => i
@@ -99,7 +127,8 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
           case s: java.lang.Short => s
           case b: java.lang.Byte => b
           case c: java.lang.Character => c
-          case e: EFactory => Option(e.getEPackage.getNsURI).getOrElse("<null>")
+          case x: org.eclipse.emf.common.util.Enumerator =>
+            x.getValue
           case e: EObject => EcoreUtil.getURI(e).toString
         }
         node.setProperty(feature.getName, value)
@@ -127,7 +156,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
  }
 }
 
-object GraphResourceTest extends App {
+/**object GraphResourceTest extends App {
   val rs = new ResourceSetImpl
   val db = new File("db")
   val factory = EcoreFactory.eINSTANCE
@@ -163,3 +192,4 @@ object GraphResourceTest extends App {
   }
   res.getContents.asScala.foreach(print(0))
 }
+**/

@@ -11,3 +11,6 @@ crossScalaVersions := Seq("2.11.8","2.12.1")
 
 libraryDependencies += "de.dfki.cps" % "specific-dependencies" % "4.6.3"
 libraryDependencies += "org.neo4j" % "neo4j" % "3.1.0"
+
+libraryDependencies += "de.dfki.cps" %% "specific-sysml" % "0.1.6" % "test"
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % "test"
