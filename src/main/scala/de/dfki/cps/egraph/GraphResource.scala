@@ -8,6 +8,7 @@ import org.eclipse.emf.ecore.EcoreFactory
 import org.eclipse.emf.ecore.resource.impl.{ResourceImpl, ResourceSetImpl}
 
 import scala.concurrent.duration.Duration
+import internal.Util._
 
 /**
   * @author Martin Ring <martin.ring@dfki.de>
@@ -18,7 +19,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
   override def doLoad(inputStream: InputStream, options: util.Map[_, _]): Unit = {
     if (this.getURI.scheme() == "graph" && inputStream.isInstanceOf[EGraphStoreInput]) {
       val store = inputStream.asInstanceOf[EGraphStoreInput].store
-      store.transaction {
+      store.graphDb.transaction {
         val resource = Option(store.graphDb.findNode(Labels.Resource,"uri",getURI.host()))
         resource.fold(this.contents.clear()) { root =>
 
@@ -30,7 +31,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
   override def doSave(outputStream: OutputStream, options: util.Map[_, _]): Unit = {
     if (this.getURI.scheme() == "graph" && outputStream.isInstanceOf[EGraphStoreOutput]) {
       val store = outputStream.asInstanceOf[EGraphStoreOutput].store
-      store.transaction {
+      store.graphDb.transaction {
         val resource = Option {
           store.graphDb.findNode(Labels.Resource,"uri",getURI.host())
         } getOrElse {
@@ -56,7 +57,7 @@ object GraphResourceTest extends App {
   res.getContents.add(pkg)
   res.save(new util.HashMap)
   import scala.collection.JavaConverters._
-  store.transaction {
+  store.graphDb.transaction {
     store.graphDb.getAllNodes.asScala.foreach { node =>
       println(node.getId + node.getLabels.asScala.mkString(":",";",""))
       node.getAllProperties.asScala.map("  " + _)foreach(println)
