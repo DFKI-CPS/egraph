@@ -9,4 +9,5 @@ object Labels {
   val Resource = Label.label("Resource")
   val EObject = Label.label("EObject")
   val EList = Label.label("EList")
+  val Literal = Label.label("Literal")
 }

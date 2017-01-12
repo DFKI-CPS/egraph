@@ -1,7 +1,7 @@
 organization := "de.dfki.cps"
 name := "egraph"
 scalaVersion := "2.11.8"
-version := "0.9.0"
+version := "0.2.0"
 licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
 bintrayOrganization := Some("dfki-cps")
 

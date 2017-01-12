@@ -8,11 +8,11 @@ import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.resource.Resource.Factory
 import org.eclipse.emf.ecore.resource._
 import org.eclipse.emf.ecore.resource.impl.ExtensibleURIConverterImpl
-import org.neo4j.graphdb.{GraphDatabaseService, Transaction}
+import org.neo4j.graphdb.{Direction, GraphDatabaseService, Transaction}
 import org.neo4j.graphdb.factory.GraphDatabaseFactory
 
-import scala.concurrent.duration.Duration
-import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConverters._
+import internal.Util._
 
 class EGraphStoreInput(val store: EGraphStore) extends InputStream {
   def read(): Int =
@@ -45,6 +45,11 @@ class EGraphStore(dir: File, settings: Option[URL] = None) {
     val emptyInputStream = new EGraphStoreInput(this)
     val emptyOutputStream = new EGraphStoreOutput(this)
     resourceSet.setURIConverter(new ExtensibleURIConverterImpl() {
+      override def delete(uri: URI, options: util.Map[_, _]): Unit =
+        if (uri.scheme() == "graph") graphDb.transaction {
+          Option(graphDb.findNode(Labels.Resource,"uri",uri.host()))
+            .foreach(deleteTransitiveOut)
+        }.get else super.delete(uri,options)
       override def createInputStream(uri: URI, options: util.Map[_, _]): InputStream =
         if (uri.scheme() == "graph") {
           emptyInputStream

@@ -1,14 +1,22 @@
 package de.dfki.cps.egraph.internal
 
-import org.neo4j.graphdb.{GraphDatabaseService, Transaction}
+import org.neo4j.graphdb.{Direction, GraphDatabaseService, Node, Transaction}
 
 import scala.concurrent.duration.Duration
 import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConverters._
 
 /**
   * @author Martin Ring <martin.ring@dfki.de>
   */
 object Util {
+  def deleteTransitiveOut(node: Node): Unit = {
+    node.getRelationships(Direction.INCOMING).asScala.foreach(_.delete())
+    node.getRelationships(Direction.OUTGOING).asScala
+      .map(_.getEndNode()).foreach(deleteTransitiveOut)
+    node.delete()
+  }
+
   implicit class RichGraphDatabase(val graphDb: GraphDatabaseService) extends AnyVal {
     def transaction[T](body: => T)(implicit timeout: Duration = Duration.Inf): Try[T] =
       withTransaction(_ => body)
