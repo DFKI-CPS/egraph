@@ -12,11 +12,14 @@ import scala.collection.JavaConverters._
   */
 object Util {
   def deleteTransitiveOut(node: Node, types: RelationshipType*): Unit = {
-    node.getRelationships(Direction.INCOMING).asScala.foreach(_.delete())
-    node.getRelationships(Direction.OUTGOING).asScala.foreach { out =>
-      val end = out.getEndNode
-      if (types.isEmpty || types.contains(out.getType)) deleteTransitiveOut(end, types: _*)
-      else out.delete()
+    node.getRelationships(Direction.INCOMING).asScala.foreach { in =>
+      in.delete()
+    }
+    node.getRelationships(Direction.OUTGOING,types :_*).asScala.foreach { out =>
+      deleteTransitiveOut(out.getEndNode, types :_*)
+    }
+    node.getRelationships(Direction.OUTGOING).asScala.foreach { rel =>
+      rel.delete()
     }
     node.delete()
   }
