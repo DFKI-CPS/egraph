@@ -7,6 +7,7 @@ import de.dfki.cps.specific.sysml
 import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.resource.impl.ResourceSetImpl
 import org.scalatest.FunSuite
+import internal.Util._
 
 /**
   * @author Martin Ring <martin.ring@dfki.de>
@@ -21,9 +22,18 @@ class Test extends FunSuite {
     sysml.Synthesis.prepareLibrary(rs)
     val model = sysml.Model.load(getClass.getClassLoader.getResource("example.sysml").toURI)(rs)
     val res = rs.createResource(URI.createURI("graph://test"))
-    res.getContents.add(model)
+    res.getContents.addAll(model.eResource().getContents)
     res.save(new util.HashMap)
     res.unload()
     res.load(new util.HashMap)
+    store.graphDb.transaction {
+      println(store.graphDb.getAllNodes.stream().count() + " nodes")
+      println(store.graphDb.getAllRelationships.stream().count() + " relations")
+    }
+    res.delete(new util.HashMap)
+    store.graphDb.transaction {
+      println(store.graphDb.getAllNodes.stream().count() + " nodes")
+      println(store.graphDb.getAllRelationships.stream().count() + " relations")
+    }
   }
 }

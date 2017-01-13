@@ -48,7 +48,7 @@ class EGraphStore(dir: File, settings: Option[URL] = None) {
       override def delete(uri: URI, options: util.Map[_, _]): Unit =
         if (uri.scheme() == "graph") graphDb.transaction {
           Option(graphDb.findNode(Labels.Resource,"uri",uri.host()))
-            .foreach(deleteTransitiveOut)
+            .foreach(deleteTransitiveOut(_,Relations.Contents,Relations.NextSibling,Relations.EReference))
         }.get else super.delete(uri,options)
       override def createInputStream(uri: URI, options: util.Map[_, _]): InputStream =
         if (uri.scheme() == "graph") {

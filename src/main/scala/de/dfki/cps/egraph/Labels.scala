@@ -8,7 +8,7 @@ import org.neo4j.graphdb.Label
 object Labels {
   val Resource = Label.label("Resource")
   val EObject = Label.label("EObject")
-  val Reference = Label.label("Reference")
+  val EReference = Label.label("EReference")
   val EList = Label.label("EList")
   val Literal = Label.label("Literal")
 }
