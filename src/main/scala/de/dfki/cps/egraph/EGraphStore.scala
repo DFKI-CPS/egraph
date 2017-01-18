@@ -11,7 +11,6 @@ import org.eclipse.emf.ecore.resource.impl.ExtensibleURIConverterImpl
 import org.neo4j.graphdb.{Direction, GraphDatabaseService, Transaction}
 import org.neo4j.graphdb.factory.GraphDatabaseFactory
 
-import scala.collection.JavaConverters._
 import internal.Util._
 
 class EGraphStoreInput(val store: EGraphStore) extends InputStream {
@@ -48,7 +47,7 @@ class EGraphStore(dir: File, settings: Option[URL] = None) {
       override def delete(uri: URI, options: util.Map[_, _]): Unit =
         if (uri.scheme() == "graph") graphDb.transaction {
           Option(graphDb.findNode(Labels.Resource,"uri",uri.host()))
-            .foreach(deleteTransitiveOut(_,Relations.Contents,Relations.NextSibling,Relations.EReference))
+            .foreach(deleteTransitiveOut(_,Relations.Contents,internal.Relations.MEMBER, internal.Relations.NEXT_SIBLING,Relations.EReference))
         }.get else super.delete(uri,options)
       override def createInputStream(uri: URI, options: util.Map[_, _]): InputStream =
         if (uri.scheme() == "graph") {

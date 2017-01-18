@@ -1,4 +1,4 @@
-package de.dfki.cps.egraph;
+package de.dfki.cps.egraph.internal;
 
 import org.neo4j.graphdb.RelationshipType;
 
@@ -6,7 +6,6 @@ import org.neo4j.graphdb.RelationshipType;
  * @author Martin Ring <martin.ring@dfki.de>
  */
 public enum Relations implements RelationshipType {
-    Contents,
-    EReference,
-    EReferenceLink
+    NEXT_SIBLING,
+    MEMBER
 }
