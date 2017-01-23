@@ -21,13 +21,6 @@ import scala.collection.JavaConverters._
   * @author Martin Ring <martin.ring@dfki.de>
   */
 class Test extends FunSuite with Matchers {
-  def equal(a: Resource, b: Resource) = {
-    val sa = new SResource(a)
-    val sb = new SResource(b)
-    val stool = new STools(new java.io.File(getClass.getClassLoader.getResource("ecore.simeq").getFile))
-    stool.getSTool("ecore").sdiff(sa,sb).entries shouldBe empty
-  }
-
   test("bla") {
     val rs = new ResourceSetImpl
     val dir = new File("test")
@@ -35,84 +28,26 @@ class Test extends FunSuite with Matchers {
     val store = new EGraphStore(dir)
     store.attach(rs)
     sysml.Synthesis.prepareLibrary(rs)
-    val modelA = sysml.Model.load(getClass.getClassLoader.getResource("example.sysml").toURI,"example")(rs)
-    val modelB = sysml.Model.load(getClass.getClassLoader.getResource("example.sysml").toURI,"example")(rs)
-    val res = rs.createResource(URI.createURI("graph://test"))
-    val res2 = new ResourceImpl()
-    res.getContents.addAll(modelA.getContents)
-    res2.getContents.addAll(modelB.getContents)
-    res.save(new util.HashMap)
-    res.unload()
-    val res3= rs.getResource(URI.createURI("graph://test"),true)
-    res.load(new util.HashMap)
-    equal(res2,res3)
-    store.graphDb.transaction {
-      println(store.graphDb.getAllNodes.stream().count() + " nodes")
-      println(store.graphDb.getAllRelationships.stream().count() + " relations")
-    }
-    res.delete(new util.HashMap)
-    store.graphDb.transaction {
-      println(store.graphDb.getAllNodes.stream().count() + " nodes")
-      println(store.graphDb.getAllRelationships.stream().count() + " relations")
-    }
-  }
+    val modelA = sysml.Model.load(getClass.getClassLoader.getResource("modelA.sysml").toURI,"example")(rs)
+    val modelB = sysml.Model.load(getClass.getClassLoader.getResource("modelB.sysml").toURI,"example")(rs)
+    val modelB2 = sysml.Model.load(getClass.getClassLoader.getResource("modelB.sysml").toURI,"example")(rs)
+    val resA = new ResourceImpl()
+    val resB = rs.createResource(URI.createURI("graph://test"))
+    val resB2 = new ResourceImpl()
+    resA.getContents.addAll(modelA.getContents)
+    resB.getContents.addAll(modelB.getContents)
+    resB2.getContents.addAll(modelB2.getContents)
 
-  test("blub") {
-    val rs = new ResourceSetImpl
-    val dir = new File("test")
-    if (!dir.exists()) dir.mkdirs()
-    val store = new EGraphStore(dir)
-    store.attach(rs)
-    val res = rs.createResource(URI.createURI("graph://test"))
-    val f = EcoreFactory.eINSTANCE
-    val pkg = f.createEPackage()
-    res.getContents.add(pkg)
-    res.save(new util.HashMap)
-    res.unload()
-    res.load(new util.HashMap)
-    val p = res.getContents.get(0).asInstanceOf[EPackage]
-    val c = f.createEClass()
-    val c2 = f.createEClass()
-    p.setName("Hallo")
-    p.setName(null)
-    p.getEClassifiers.add(c)
-    p.getEClassifiers.remove(c)
-    import collection.JavaConverters._
-    p.getEClassifiers.addAll(List(c,c2).asJava)
-  }
+    resB.save(new util.HashMap)
+    de.dfki.cps.secore.stools.getSTool("uml").sdiff(new SResource(resB), new SResource(resB2))
+        .entries shouldBe empty
 
-  test("foo") {
-    val f = EcoreFactory.eINSTANCE
-    val res = new ResourceImpl
-    val x = f.createEClass()
+    resB.unload()
+    resB.load(new util.HashMap)
 
-    val adapter = new AdapterImpl {
-      override def notifyChanged(msg: Notification): Unit = {
-        super.notifyChanged(msg)
-        msg.getEventType match {
-          case Notification.ADD_MANY =>
-            println("add all")
-          case Notification.ADD =>
-            println("add " + msg.getNewValue)
-          case Notification.MOVE =>
-            println("move")
-          case Notification.REMOVE_MANY =>
-            println("remove all")
-          case Notification.REMOVE =>
-            println("remove")
-          case other =>
-            println("unhandled " + msg)
-        }
-      }
-    }
+    de.dfki.cps.secore.stools.getSTool("uml").sdiff(new SResource(resB), new SResource(resB2))
+      .entries shouldBe empty
 
-    res.eAdapters().add(adapter)
 
-    res.getContents.add(x)
-
-    x.setAbstract(true)
-    val op = f.createEOperation()
-    x.getEOperations.add(op)
-    op.setName("Hallo")
   }
 }

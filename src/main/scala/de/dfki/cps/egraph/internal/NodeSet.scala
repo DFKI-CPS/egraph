@@ -17,7 +17,6 @@ class NodeSet(val root: Node, unique: Boolean = true) extends mutable.Set[Node] 
   def -=(elem: Node): NodeSet.this.type = {
     val it = elem.getRelationships(Direction.INCOMING, Relations.MEMBER)
           .iterator().asScala.filter(_.getStartNode == root)
-
     if (unique) it.foreach(_.delete())
     else if (it.hasNext) it.next().delete()
     this
@@ -33,6 +32,9 @@ class NodeSet(val root: Node, unique: Boolean = true) extends mutable.Set[Node] 
       .iterator()
       .asScala
       .map(_.getEndNode)
+
+  override def size: Int =
+    root.getDegree(Relations.MEMBER,Direction.OUTGOING)
 }
 
 object NodeSet {

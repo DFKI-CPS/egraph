@@ -29,7 +29,7 @@ class NodeSetTest extends FlatSpec with Matchers with BeforeAndAfterAll {
     graphDb
   }
 
-  val n = 1000000
+  val n = 100000
 
   "a nodeset" should s"be able to hold $n nodes" in {
     graphDb.transaction {
@@ -95,6 +95,38 @@ class NodeSetTest extends FlatSpec with Matchers with BeforeAndAfterAll {
         set.map(_.getProperty("value"))
       }
       doStuff(set) shouldBe doStuff(sset)
+    }.get
+  }
+
+  "a unique nodeset" should "never hold the same node twice" in {
+    graphDb.transaction {
+      val nodes = for (i <- 1 to 20) yield {
+        val node = graphDb.createNode()
+        node.setProperty("value",i)
+        node
+      }
+      val set = internal.NodeSet.empty(graphDb,unique = true)
+      set ++= nodes
+      set ++= nodes
+      set
+      set.size should be (nodes.size)
+
+    }.get
+  }
+
+  "a non-unique nodeset" should "be able to hold the same node twice" in {
+    graphDb.transaction {
+      val nodes = for (i <- 1 to 20) yield {
+        val node = graphDb.createNode()
+        node.setProperty("value",i)
+        node
+      }
+      val set = internal.NodeSet.empty(graphDb,unique = false)
+      set ++= nodes
+      set ++= nodes
+      set.size should be (nodes.size * 2)
+      set.remove(nodes(3))
+      set.size should be (nodes.size * 2 - 1)
     }.get
   }
 

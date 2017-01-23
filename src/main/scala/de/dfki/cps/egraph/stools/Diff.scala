@@ -11,6 +11,11 @@ import de.dfki.cps.stools.editscript.SEditScript.SEditScriptEntry
 object Diff {
   def applyDiff(resource: GraphResource, diff: SEditScript) = diff.entries.foreach {
     case (o: SObject, entry: SEditScriptEntry) =>
+      resource.getNode(o.underlying).fold {
+        println("error: no graph node exists for object " + o.underlying)
+      } { node =>
+        node.getDegree
+      }
     case other => println("error: unhandled SEditScriptEntry: " + other._2)
   }
 }

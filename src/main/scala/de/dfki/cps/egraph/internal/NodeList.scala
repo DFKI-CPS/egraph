@@ -8,9 +8,12 @@ import scala.collection.mutable
   * @author Martin Ring <martin.ring@dfki.de>
   */
 class NodeList(val root: Node) extends mutable.Buffer[Node] {
-  if (!root.hasRelationship(Relations.NEXT_SIBLING)) {
-    root.createRelationshipTo(root, Relations.NEXT_SIBLING)
-    length = 0
+  root.getDegree(Relations.NEXT_SIBLING, Direction.BOTH) match {
+    case 0 =>
+      root.createRelationshipTo(root, Relations.NEXT_SIBLING)
+      length = 0
+    case 2 => // ok
+    case n => throw new IllegalArgumentException(s"root node has degree $n. may only be 0 or 2")
   }
 
   def apply(n: Int): Node = {
@@ -35,12 +38,11 @@ class NodeList(val root: Node) extends mutable.Buffer[Node] {
     newelem.createRelationshipTo(after,Relations.NEXT_SIBLING)
   }
 
-  private var cachedLength = root.getProperty("length").asInstanceOf[Int]
   private def length_=(value: Int): Unit = {
     root.setProperty("length",value)
-    cachedLength = value
   }
-  def length: Int = cachedLength
+
+  def length: Int = root.getProperty("length").asInstanceOf[Int]
 
   def +=(elem: Node): NodeList.this.type = {
     val in = root.getSingleRelationship(Relations.NEXT_SIBLING,Direction.INCOMING)

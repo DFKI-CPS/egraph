@@ -41,6 +41,10 @@ class NodeListTest extends FlatSpec with Matchers with BeforeAndAfterAll {
       list(1000).getProperty("value") shouldBe 1000
       list(99000).getProperty("value") shouldBe 99000
       list.map(_.getProperty("value").asInstanceOf[Int]) shouldBe (0 to 100000)
+
+      val list2 = new internal.NodeList(list.root)
+
+      list shouldBe list2
     }.get
   }
 
@@ -52,13 +56,24 @@ class NodeListTest extends FlatSpec with Matchers with BeforeAndAfterAll {
         node
       }
       val list = internal.NodeList.from(nodes,graphDb)
+      val list2 = new internal.NodeList(list.root)
       val slist = mutable.Buffer(nodes :_*)
       list shouldBe slist
+      list shouldBe list2
+      list.size shouldBe slist.size
+      list.size shouldBe list2.size
       list.remove(3,2)
       slist.remove(3,2)
       list shouldBe slist
+      list shouldBe list2
+      list.size shouldBe slist.size
+      list.size shouldBe list2.size
       list.clear()
+      slist.clear()
       list shouldBe empty
+      list shouldBe list2
+      list.size shouldBe slist.size
+      list.size shouldBe list2.size
     }.get
   }
 

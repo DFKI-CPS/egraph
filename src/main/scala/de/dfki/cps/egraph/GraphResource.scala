@@ -26,6 +26,9 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
   private val nodeMap = mutable.Map.empty[EObject,Node]
   private val objectMap = mutable.Map.empty[Node,EObject]
 
+  def getNode(obj: EObject) = nodeMap.get(obj)
+  def getObject(node: Node) = objectMap.get(node)
+
   def adapt(obj: EObject, node: Node) = new AdapterImpl {
     override def notifyChanged(msg: Notification): Unit = {
       super.notifyChanged(msg)
@@ -73,9 +76,9 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
           if (ref.isMany) {
             val values = //if (ref.isOrdered) {
               new NodeList(node).map(readValueNode).asJavaCollection
-            //} else {
-              //new NodeSet(node, ref.isUnique).map(readValueNode).asJavaCollection
-            //}
+            /*} else {
+              new NodeSet(node, ref.isUnique).map(readValueNode).asJavaCollection
+            }*/
             val elist = x.eGet(ref).asInstanceOf[EList[AnyRef]]
             elist.addAll(values)
           } else {
