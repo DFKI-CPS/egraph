@@ -3,19 +3,17 @@ package de.dfki.cps.egraph
 import java.io.File
 import java.util
 
+import de.dfki.cps.egraph.stools.Diff
 import de.dfki.cps.secore.SResource
 import de.dfki.cps.specific.sysml
 import de.dfki.cps.stools.STools
+import de.dfki.cps.stools.similarityspec.SimilaritySpec
 import org.eclipse.emf.common.util.URI
 import org.eclipse.emf.ecore.resource.impl.{ResourceImpl, ResourceSetImpl}
+import org.eclipse.uml2.uml.UMLPackage
 import org.scalatest.{FunSuite, Matchers}
-import internal.Util._
-import org.eclipse.emf.common.notify.Notification
-import org.eclipse.emf.common.notify.impl.AdapterImpl
-import org.eclipse.emf.ecore.resource.Resource
-import org.eclipse.emf.ecore.{EAttribute, EObject, EPackage, EReference, EcoreFactory}
 
-import scala.collection.JavaConverters._
+import scala.io.Source
 
 /**
   * @author Martin Ring <martin.ring@dfki.de>
@@ -38,16 +36,28 @@ class Test extends FunSuite with Matchers {
     resB.getContents.addAll(modelB.getContents)
     resB2.getContents.addAll(modelB2.getContents)
 
+    val stool = de.dfki.cps.secore.stools.getSTool("specific")
+
     resB.save(new util.HashMap)
-    de.dfki.cps.secore.stools.getSTool("uml").sdiff(new SResource(resB), new SResource(resB2))
+    stool.sdiff(new SResource(resB), new SResource(resB2))
         .entries shouldBe empty
 
     resB.unload()
     resB.load(new util.HashMap)
 
-    de.dfki.cps.secore.stools.getSTool("uml").sdiff(new SResource(resB), new SResource(resB2))
-      .entries shouldBe empty
+    val script = stool.sdiff(new SResource(resB), new SResource(resA))
+    script.entries.foreach(println)
 
+    println("APPLYING SCRIPT")
+
+    Diff.applyDiff(resB.asInstanceOf[GraphResource],script)
+
+
+    resB.unload()
+    resB.load(new util.HashMap)
+
+    val script2 = stool.sdiff(new SResource(resB), new SResource(resA))
+    script2.entries.foreach(println)
 
   }
 }

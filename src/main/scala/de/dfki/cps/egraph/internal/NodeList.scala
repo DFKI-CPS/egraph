@@ -102,6 +102,11 @@ class NodeList(val root: Node) extends mutable.Buffer[Node] {
     node
   }
 
+  def removeAll(p: Node => Boolean) = {
+    // TODO: Can be made easily more efficient
+    val marked = iterator.filter(p).toSeq
+    marked.foreach(x => remove(indexOf(x)))
+  }
 
   def iterator: Iterator[Node] = new Iterator[Node] {
     var current = root.getSingleRelationship(Relations.NEXT_SIBLING,Direction.OUTGOING).getEndNode

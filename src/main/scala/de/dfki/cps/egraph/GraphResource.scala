@@ -10,9 +10,10 @@ import org.eclipse.emf.common.notify.impl.AdapterImpl
 import org.eclipse.emf.common.util.{EList, URI}
 import org.eclipse.emf.ecore.resource.impl.ResourceImpl
 import org.eclipse.emf.ecore.util.EcoreUtil
-import org.eclipse.emf.ecore.{EAttribute, EClass, EObject, EReference, EStructuralFeature, InternalEObject}
+import org.eclipse.emf.ecore.{EAttribute, EClass, EObject, EReference}
 import org.neo4j.graphdb.{Direction, Node}
 
+import scala.beans.BooleanBeanProperty
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent.duration.Duration
@@ -23,27 +24,24 @@ import scala.concurrent.duration.Duration
 class GraphResource(uri: URI) extends ResourceImpl(uri) {
   implicit val defaultTimeout = Duration.Inf
 
+  private var rootNode = Option.empty[Node]
   private val nodeMap = mutable.Map.empty[EObject,Node]
   private val objectMap = mutable.Map.empty[Node,EObject]
 
+  def root: Option[Node] = rootNode
   def getNode(obj: EObject) = nodeMap.get(obj)
   def getObject(node: Node) = objectMap.get(node)
 
-  def adapt(obj: EObject, node: Node) = new AdapterImpl {
-    override def notifyChanged(msg: Notification): Unit = {
-      super.notifyChanged(msg)
-      val feature = Option(msg.getFeature).collect {
-        case f: EStructuralFeature if !f.isTransient && !f.isDerived && !f.isVolatile => f
-      }
-      feature.foreach {
-        case ref: EReference =>
-          msg.getEventType match {
-            case Notification.ADD =>
-            case Notification.REMOVE =>
-          }
-        case attr: EAttribute =>
+  @BooleanBeanProperty
+  var directWrite = false
+
+  def adapt(obj: EObject, node: Node) = {
+    val adapter = new AdapterImpl {
+      override def notifyChanged(msg: Notification): Unit = {
+        println(msg)
       }
     }
+    obj.eAdapters().add(adapter)
   }
 
   private def readValueNode(node: Node): AnyRef = {
@@ -51,7 +49,13 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       if (node.hasLabel(Labels.EObject)) readEObjectNode(node)
       else if (node.hasLabel(Labels.EReference)) {
         val uri = URI.createURI(node.getProperty("uri").asInstanceOf[String])
-        resourceSet.getEObject(uri,true)
+        val other = if (uri.hasAuthority)
+          resourceSet.getEObject(uri,true)
+        else getEObject(uri.toString)
+        nodeMap.get(other).foreach { local =>
+          node.createRelationshipTo(local, Relations.EReferenceLink)
+        }
+        other
       }
       else node.getProperty("value")
     } { linked =>
@@ -74,11 +78,11 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       case ref: EReference =>
         refs.get(ref.getName).foreach { node =>
           if (ref.isMany) {
-            val values = //if (ref.isOrdered) {
+            val values = if (ref.isOrdered) {
               new NodeList(node).map(readValueNode).asJavaCollection
-            /*} else {
+            } else {
               new NodeSet(node, ref.isUnique).map(readValueNode).asJavaCollection
-            }*/
+            }
             val elist = x.eGet(ref).asInstanceOf[EList[AnyRef]]
             elist.addAll(values)
           } else {
@@ -98,7 +102,6 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
           }
         }
     }
-    x.eAdapters.add(adapt(x,node))
     x
   })
 
@@ -114,6 +117,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
           val contents = new NodeList(root.getSingleRelationship(Relations.Contents,Direction.OUTGOING).getEndNode)
           this.contents.addAll(contents.map(readEObjectNode).asJava)
         }
+        rootNode = resource
       }.get
     } else super.doLoad(inputStream,options)
   }
@@ -134,7 +138,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       node
   }
 
-  private def createEObjectNode(store: EGraphStore)(obj: EObject): Node = nodeMap.getOrElse(obj, {
+  def createEObjectNode(store: EGraphStore)(obj: EObject): Node = nodeMap.getOrElse(obj, {
     val node = store.graphDb.createNode(Labels.EObject)
     nodeMap += obj -> node
     objectMap += node -> obj
@@ -145,14 +149,14 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
         if (ref.isMany) {
           val values = obj.eGet(ref).asInstanceOf[EList[EObject]].asScala
             .map(createValueNode(store, ref.isContainment))
-          val rel = /*if (ref.isOrdered)*/ {
+          val rel = if (ref.isOrdered) {
             val list = NodeList.from(values, store.graphDb)
             node.createRelationshipTo(list.root, Relations.EReference)
-          } /*else {
+          } else {
             val set = NodeSet.empty(store.graphDb, ref.isUnique)
             set ++= values
             node.createRelationshipTo(set.root, Relations.EReference)
-          }*/
+          }
           rel.setProperty("name", ref.getName)
         } else {
           val feature = createValueNode(store, ref.isContainment)(obj.eGet(ref).asInstanceOf[EObject])
@@ -188,6 +192,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
         val list = NodeList.empty(store.graphDb)
         list.appendAll(this.contents.asScala.map(createEObjectNode(store)))
         resource.createRelationshipTo(list.root,Relations.Contents)
+        rootNode = Some(resource)
       }.get
     } else super.doSave(outputStream,options)
   }

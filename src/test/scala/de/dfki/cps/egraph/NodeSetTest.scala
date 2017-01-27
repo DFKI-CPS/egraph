@@ -108,9 +108,7 @@ class NodeSetTest extends FlatSpec with Matchers with BeforeAndAfterAll {
       val set = internal.NodeSet.empty(graphDb,unique = true)
       set ++= nodes
       set ++= nodes
-      set
       set.size should be (nodes.size)
-
     }.get
   }
 
