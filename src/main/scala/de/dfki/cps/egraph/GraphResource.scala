@@ -11,7 +11,7 @@ import org.eclipse.emf.common.util.{EList, URI}
 import org.eclipse.emf.ecore.resource.impl.ResourceImpl
 import org.eclipse.emf.ecore.util.EcoreUtil
 import org.eclipse.emf.ecore.{EAttribute, EClass, EObject, EReference}
-import org.neo4j.graphdb.{Direction, Node}
+import org.neo4j.graphdb.{Direction, GraphDatabaseService, Node}
 
 import scala.beans.BooleanBeanProperty
 import scala.collection.JavaConverters._
@@ -55,6 +55,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
         nodeMap.get(other).foreach { local =>
           node.createRelationshipTo(local, Relations.EReferenceLink)
         }
+        if (other == null) println("could not resolve " + uri)
         other
       }
       else node.getProperty("value")
@@ -77,16 +78,30 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       .filter(f => !f.isTransient && !f.isDerived).foreach {
       case ref: EReference =>
         refs.get(ref.getName).foreach { node =>
-          if (ref.isMany) {
-            val values = if (ref.isOrdered) {
-              new NodeList(node).map(readValueNode).asJavaCollection
+          if (!ref.isContainment) deferredResolutions += { () =>
+            if (ref.isMany) {
+              val values = if (ref.isOrdered) {
+                new NodeList(node).map(readValueNode).asJavaCollection
+              } else {
+                new NodeSet(node, ref.isUnique).map(readValueNode).asJavaCollection
+              }
+              val elist = x.eGet(ref).asInstanceOf[EList[AnyRef]]
+              elist.addAll(values)
             } else {
-              new NodeSet(node, ref.isUnique).map(readValueNode).asJavaCollection
+              x.eSet(ref, readValueNode(node))
             }
-            val elist = x.eGet(ref).asInstanceOf[EList[AnyRef]]
-            elist.addAll(values)
           } else {
-            x.eSet(ref, readValueNode(node))
+            if (ref.isMany) {
+              val values = if (ref.isOrdered) {
+                new NodeList(node).map(readValueNode).asJavaCollection
+              } else {
+                new NodeSet(node, ref.isUnique).map(readValueNode).asJavaCollection
+              }
+              val elist = x.eGet(ref).asInstanceOf[EList[AnyRef]]
+              elist.addAll(values)
+            } else {
+              x.eSet(ref, readValueNode(node))
+            }
           }
         }
       case attr: EAttribute =>
@@ -105,11 +120,14 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
     x
   })
 
+  private val deferredResolutions = mutable.Buffer.empty[() => Unit]
+
   override def doLoad(inputStream: InputStream, options: util.Map[_, _]): Unit = {
     if (uri.scheme() == "graph" && inputStream.isInstanceOf[EGraphStoreInput]) {
       val store = inputStream.asInstanceOf[EGraphStoreInput].store
       this.nodeMap.clear()
       this.objectMap.clear()
+      this.deferredResolutions.clear()
       store.graphDb.transaction {
         val resource = Option(store.graphDb.findNode(Labels.Resource,"uri",uri.host()))
         this.contents.clear()
@@ -118,19 +136,20 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
           this.contents.addAll(contents.map(readEObjectNode).asJava)
         }
         rootNode = resource
+        deferredResolutions.foreach(_())
       }.get
     } else super.doLoad(inputStream,options)
   }
 
-  private def createValueNode(store: EGraphStore, containment: Boolean)(obj: EObject): Node = obj match {
-    case eObj: EObject if containment => createEObjectNode(store)(eObj)
+  private def createValueNode(graphDb: GraphDatabaseService, containment: Boolean)(obj: EObject): Node = obj match {
+    case eObj: EObject if containment => createEObjectNode(graphDb)(eObj)
     case ref: EObject =>
       val uri = EcoreUtil.getURI(ref)
-      val node = store.graphDb.createNode(Labels.EReference)
+      val node = graphDb.createNode(Labels.EReference)
       if (uri.scheme() == "graph" && uri.authority() == this.uri.authority()) {
         val frag = EcoreUtil.getRelativeURIFragmentPath(EcoreUtil.getRootContainer(ref),ref)
         node.setProperty("uri",frag)
-        val refNode = createEObjectNode(store)(ref)
+        val refNode = createEObjectNode(graphDb)(ref)
         node.createRelationshipTo(refNode,Relations.EReferenceLink)
       } else {
         node.setProperty("uri",uri.toString)
@@ -138,28 +157,85 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       node
   }
 
-  def createEObjectNode(store: EGraphStore)(obj: EObject): Node = nodeMap.getOrElse(obj, {
-    val node = store.graphDb.createNode(Labels.EObject)
+  def insertEObjectNode(graphDb: GraphDatabaseService)(obj: EObject): Node = {
+    assert(!nodeMap.isDefinedAt(obj))
+    val node = graphDb.createNode(Labels.EObject)
     nodeMap += obj -> node
-    objectMap += node -> obj
     node.setProperty("eClass", EcoreUtil.getURI(obj.eClass()).toString)
     obj.eClass().getEAllStructuralFeatures.asScala
-      .filter(f => !f.isTransient && !f.isDerived).filter(obj.eIsSet).foreach {
+      .filter(f => !f.isTransient && !f.isDerived && !f.isVolatile).filter(obj.eIsSet).foreach {
       case ref: EReference =>
         if (ref.isMany) {
-          val values = obj.eGet(ref).asInstanceOf[EList[EObject]].asScala
-            .map(createValueNode(store, ref.isContainment))
+          val objs = obj.eGet(ref).asInstanceOf[EList[EObject]].asScala
+          val values = if (ref.isContainment) objs.map(insertEObjectNode(graphDb))
+          else objs.map { vo =>
+            val node = graphDb.createNode(Labels.EReference)
+            val uri = if (vo.eResource() == obj.eResource())
+              obj.eResource().getURIFragment(vo)
+            node.setProperty("uri", uri)
+            node
+          }
           val rel = if (ref.isOrdered) {
-            val list = NodeList.from(values, store.graphDb)
+            val list = NodeList.from(values, graphDb)
             node.createRelationshipTo(list.root, Relations.EReference)
           } else {
-            val set = NodeSet.empty(store.graphDb, ref.isUnique)
+            val set = NodeSet.empty(graphDb, ref.isUnique)
             set ++= values
             node.createRelationshipTo(set.root, Relations.EReference)
           }
           rel.setProperty("name", ref.getName)
         } else {
-          val feature = createValueNode(store, ref.isContainment)(obj.eGet(ref).asInstanceOf[EObject])
+          val feature = if (ref.isContainment)
+            insertEObjectNode(graphDb)(obj.eGet(ref).asInstanceOf[EObject])
+          else {
+            val node = graphDb.createNode(Labels.EReference)
+            val vo = obj.eGet(ref).asInstanceOf[EObject]
+            val uri = if (vo.eResource() == obj.eResource())
+              obj.eResource().getURIFragment(vo)
+            else EcoreUtil.getURI(vo).toString
+            node.setProperty("uri", uri)
+            node
+          }
+          val rel = node.createRelationshipTo(feature, Relations.EReference)
+          rel.setProperty("name", ref.getName)
+        }
+      case attr: EAttribute =>
+        val attrType = attr.getEAttributeType
+        val factory = attrType.getEPackage.getEFactoryInstance
+        if (attr.isMany) {
+          val values = obj.eGet(attr).asInstanceOf[EList[AnyRef]].asScala
+            .map(factory.convertToString(attrType, _))
+          node.setProperty(attr.getName, values.toArray)
+        } else {
+          val value = factory.convertToString(attrType, obj.eGet(attr))
+          node.setProperty(attr.getName, value)
+        }
+    }
+    node
+  }
+
+  def createEObjectNode(graphDb: GraphDatabaseService)(obj: EObject): Node = nodeMap.getOrElse(obj, {
+    val node = graphDb.createNode(Labels.EObject)
+    nodeMap += obj -> node
+    objectMap += node -> obj
+    node.setProperty("eClass", EcoreUtil.getURI(obj.eClass()).toString)
+    obj.eClass().getEAllStructuralFeatures.asScala
+      .filter(f => !f.isTransient && !f.isDerived && !f.isVolatile).filter(obj.eIsSet).foreach {
+      case ref: EReference =>
+        if (ref.isMany) {
+          val values = obj.eGet(ref).asInstanceOf[EList[EObject]].asScala
+            .map(createValueNode(graphDb, ref.isContainment))
+          val rel = if (ref.isOrdered) {
+            val list = NodeList.from(values, graphDb)
+            node.createRelationshipTo(list.root, Relations.EReference)
+          } else {
+            val set = NodeSet.empty(graphDb, ref.isUnique)
+            set ++= values
+            node.createRelationshipTo(set.root, Relations.EReference)
+          }
+          rel.setProperty("name", ref.getName)
+        } else {
+          val feature = createValueNode(graphDb, ref.isContainment)(obj.eGet(ref).asInstanceOf[EObject])
           val rel = node.createRelationshipTo(feature, Relations.EReference)
           rel.setProperty("name", ref.getName)
         }
@@ -190,7 +266,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
         resource.setProperty("uri",uri.host())
         // write contents
         val list = NodeList.empty(store.graphDb)
-        list.appendAll(this.contents.asScala.map(createEObjectNode(store)))
+        list.appendAll(this.contents.asScala.map(createEObjectNode(store.graphDb)))
         resource.createRelationshipTo(list.root,Relations.Contents)
         rootNode = Some(resource)
       }.get

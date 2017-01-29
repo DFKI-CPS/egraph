@@ -3,12 +3,11 @@ package de.dfki.cps.egraph.stools
 import de.dfki.cps.egraph.internal.{NodeList, NodeSet}
 import de.dfki.cps.egraph.{GraphResource, Labels, Relations}
 import de.dfki.cps.secore._
-import de.dfki.cps.stools.SAtomicString
 import de.dfki.cps.stools.editscript._
 import org.eclipse.emf.common.util.{EList, URI}
 import org.eclipse.emf.ecore.EObject
 import org.eclipse.emf.ecore.util.EcoreUtil
-import org.neo4j.graphdb.Direction
+import org.neo4j.graphdb.{Direction, Node}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -20,7 +19,6 @@ object Diff {
   def applyDiff(resource: GraphResource, editScript: SEditScript) = {
     import de.dfki.cps.egraph.internal.Util._
     val graph = resource.root.get.getGraphDatabase
-    var deferredResolutions: mutable.Buffer[() => Unit] = mutable.Buffer.empty
     graph.transaction {
       editScript.entries.foreach {
         case (res: SResource, entry) =>
@@ -110,78 +108,119 @@ object Diff {
               ref.parent.parent.underlying.eGet(ref.parent.underlying).asInstanceOf[EList[AnyRef]]
                 .addAll(ref.index + 1, values.asJava)
           }*/
-        case (ref: SReference, entry) if ref.underlying.isContainment =>
+        case (ref: SReference, entry) =>
           assert(entry.appendAnnotations.isEmpty)
           assert(entry.removeAnnotations.isEmpty)
           assert(entry.updateAnnotations.isEmpty)
-          entry.appendElements.foreach {
-            case AppendElements(ref: SReference, elems) =>
-              val values = elems.asScala.map {
-                case o: SObject => EcoreUtil.copy(o.underlying)
+          if (ref.underlying.isContainment && ref.underlying.isMany) {
+            val node = {
+              val objNode = resource.getNode(ref.parent.underlying).get
+              objNode.getRelationships(Direction.OUTGOING, Relations.EReference)
+                .asScala.find(_.getProperty("name") == ref.underlying.getName)
+                .map(_.getEndNode).getOrElse {
+                val root = if (ref.underlying.isOrdered) NodeList.empty(graph).root else NodeSet.empty(graph).root
+                val rel = objNode.createRelationshipTo(root,Relations.EReference)
+                rel.setProperty("name",ref.underlying.getName)
+                root
               }
-              val v = ref.parent.underlying.eGet(ref.underlying).asInstanceOf[EList[EObject]]
-              v.addAll(values.asJava)
-          }
-          entry.removeElements.foreach {
-            case RemoveElements(ref2: SReference, elems) =>
-              val values = elems.asScala.map {
-                case o: SObject =>
-                  o.underlying
-              }
-              val v = ref.parent.underlying.eGet(ref2.underlying).asInstanceOf[EList[EObject]]
-              v.removeAll(values.asJava)
-          }
-        /*entry.insertBefore.foreach {
-        case (_,InsertBefore(refr: SObject, elems)) =>
-          val values = elems.asScala.map {
-            case s: SObject => EcoreUtil.copy(s.underlying)
-          }
-          ref.parent.underlying.eGet(ref.underlying).asInstanceOf[EList[EObject]]
-            .addAll(ref.index,values.asJava)
-      }
-      entry.insertAfter.foreach {
-        case (_,InsertAfter(refr: SObject, elems)) =>
-          val values = elems.asScala.map {
-            case s: SObject => EcoreUtil.copy(s.underlying)
-          }
-          ref.parent.underlying.eGet(ref.underlying).asInstanceOf[EList[EObject]]
-            .addAll(ref.index + 1,values.asJava)
-      }*/
-        case (ref: SReference, entry) =>
-          val node = resource.getNode(ref.parent.underlying).get.getRelationships(Direction.OUTGOING,Relations.EReference)
-              .asScala.find(_.getProperty("name") == ref.underlying.getName).get.getEndNode
-          entry.removeElements.foreach {
-            case RemoveElements(_, elems) =>
-              if (ref.underlying.isOrdered) {
-                val list = new NodeList(node)
-                val nodes = elems.asScala.map {
-                  case ln: SLink =>
-                    list.indexOf(list.apply(ln.index))
-                  case o: SObject =>
-                    resource.getNode(o.underlying)
+            }
+            entry.removeElements.foreach {
+              case RemoveElements(ref2: SReference, elems) =>
+                val values = elems.asScala.map {
+                  case o: SObject => resource.getNode(o.underlying).get
+                }.toSet
+                if (ref.underlying.isOrdered) {
+                  val list = new NodeList(node)
+                  list.removeAll(values.contains)
+                } else {
+                  val set = new NodeSet(node,ref.underlying.isUnique)
+                  assert(values.forall(set.remove))
                 }
-                list.removeAll(nodes.contains)
-              } else {
-                val set = new NodeSet(node)
-                println("no remove set")
-              }
-          }
-          entry.appendElements.foreach {
-            case AppendElements(_, elems) =>
-              if (ref.underlying.isOrdered) {
+            }
+            entry.insertBefore.foreach {
+              case (_, InsertBefore(h: SObject,elems)) =>
+                val values = elems.asScala.map {
+                  case o: SObject => resource.insertEObjectNode(graph)(o.underlying)
+                }
+                assert (ref.underlying.isOrdered)
                 val list = new NodeList(node)
-                /*val nodes = elems.asScala.collect {
+                list.insertAll(list.indexOf(resource.getNode(h.underlying).get), values)
+            }
+            entry.insertAfter.foreach {
+              case (_, InsertAfter(h: SObject,elems)) =>
+                val values = elems.asScala.map {
+                  case o: SObject => resource.insertEObjectNode(graph)(o.underlying)
+                }
+                assert (ref.underlying.isOrdered)
+                val list = new NodeList(node)
+                list.insertAll(list.indexOf(resource.getNode(h.underlying).get) + 1, values)
+            }
+            entry.appendElements.foreach {
+              case AppendElements(ref: SReference, elems) =>
+                val values = elems.asScala.map {
+                  case o: SObject => resource.insertEObjectNode(graph)(o.underlying)
+                }
+                if (ref.underlying.isOrdered) {
+                  val list = new NodeList(node)
+                  list.appendAll(values)
+                } else {
+                  val set = new NodeSet(node,ref.underlying.isUnique)
+                  set ++= values
+                }
+            }
+          } else if (ref.underlying.isContainment) {
+
+          }
+          else if (ref.underlying.isMany) {
+            val node = {
+              val objNode = resource.getNode(ref.parent.underlying).get
+              objNode.getRelationships(Direction.OUTGOING, Relations.EReference)
+                .asScala.find(_.getProperty("name") == ref.underlying.getName)
+                .map(_.getEndNode).getOrElse {
+                val root = if (ref.underlying.isOrdered) NodeList.empty(graph).root else NodeSet.empty(graph).root
+                val rel = objNode.createRelationshipTo(root,Relations.EReference)
+                rel.setProperty("name",ref.underlying.getName)
+                root
+              }
+            }
+            entry.removeElements.foreach {
+              case RemoveElements(_, elems) =>
+                if (ref.underlying.isOrdered) {
+                  val list = new NodeList(node)
+                  val nodes = elems.asScala.map {
+                    case ln: SLink =>
+                      list.apply(ln.index)
+                  }
+                  nodes.foreach(n => list.remove(list.indexOf(n)))
+                } else {
+                  val set = new NodeSet(node)
+                  val nodes = elems.asScala.map {
+                    case ln: SLink =>
+                      set.find(_.getProperty("uri") == ln.label)
+                  }
+                }
+            }
+            entry.appendElements.foreach {
+              case AppendElements(_, elems) =>
+                val nodes = elems.asScala.collect {
                   case ln: SLink =>
+                    println("appending " + ln.label)
                     val lnNode = graph.createNode(Labels.EReference)
-                    lnNode.setProperty("uri",ln.label)
+                    lnNode.setProperty("uri", ln.label)
                     lnNode
                 }
-                list.appendAll(nodes)*/
-              } else {
-                println("no append set")
-              }
+                if (ref.underlying.isOrdered) {
+                  val list = new NodeList(node)
+                  list.appendAll(nodes)
+                } else {
+                  val set = new NodeSet(node, ref.underlying.isUnique)
+                  set ++= nodes
+                }
+            }
+          } else {
+            assert(false)
           }
       }
-    }
-  }.get
+    }.get
+  }
 }

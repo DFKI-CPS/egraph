@@ -57,7 +57,7 @@ class Test extends FunSuite with Matchers {
     resB.load(new util.HashMap)
 
     val script2 = stool.sdiff(new SResource(resB), new SResource(resA))
-    script2.entries.foreach(println)
+    assert(script2.entries.isEmpty)
 
   }
 }
