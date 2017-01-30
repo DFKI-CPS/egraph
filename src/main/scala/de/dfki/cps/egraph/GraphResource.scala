@@ -32,9 +32,6 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
   def getNode(obj: EObject) = nodeMap.get(obj)
   def getObject(node: Node) = objectMap.get(node)
 
-  @BooleanBeanProperty
-  var directWrite = false
-
   def adapt(obj: EObject, node: Node) = {
     val adapter = new AdapterImpl {
       override def notifyChanged(msg: Notification): Unit = {
@@ -144,14 +141,14 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
   private def createValueNode(graphDb: GraphDatabaseService, containment: Boolean)(obj: EObject): Node = obj match {
     case eObj: EObject if containment => createEObjectNode(graphDb)(eObj)
     case ref: EObject =>
-      val uri = EcoreUtil.getURI(ref)
       val node = graphDb.createNode(Labels.EReference)
-      if (uri.scheme() == "graph" && uri.authority() == this.uri.authority()) {
-        val frag = EcoreUtil.getRelativeURIFragmentPath(EcoreUtil.getRootContainer(ref),ref)
+      if (ref.eResource() == this) {
+        val frag = getURIFragment(ref)
         node.setProperty("uri",frag)
         val refNode = createEObjectNode(graphDb)(ref)
         node.createRelationshipTo(refNode,Relations.EReferenceLink)
       } else {
+        val uri = EcoreUtil.getURI(ref)
         node.setProperty("uri",uri.toString)
       }
       node

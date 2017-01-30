@@ -25,6 +25,11 @@ object Diff {
           assert(entry.appendAnnotations.isEmpty)
           assert(entry.removeAnnotations.isEmpty)
           assert(entry.updateAnnotations.isEmpty)
+          assert(entry.insertAfter.isEmpty)
+          assert(entry.insertBefore.isEmpty)
+          assert(entry.appendElements.isEmpty)
+          assert(entry.removeElements.isEmpty)
+          assert(entry.replaceElements.isEmpty)
         case (obj: SObject, entry) =>
           val node = resource.getNode(obj.underlying).get
           val refs = node.getRelationships(Direction.OUTGOING, Relations.EReference).asScala.map { rel =>
@@ -90,28 +95,14 @@ object Diff {
               } :_*)
               node.setProperty(attr.underlying.getName,n)
           }
-          /*entry.insertBefore.foreach {
-            case (_, InsertBefore(ref: SLiteral, elems)) =>
-              val values = elems.asScala.map {
-                case s: SLiteral =>
-                  s.underlying
-              }
-              ref.parent.parent.underlying.eGet(ref.parent.underlying).asInstanceOf[EList[AnyRef]]
-                .addAll(ref.index, values.asJava)
-          }
-          entry.insertAfter.foreach {
-            case (_, InsertAfter(ref: SLiteral, elems)) =>
-              val values = elems.asScala.map {
-                case s: SLiteral =>
-                  s.underlying
-              }
-              ref.parent.parent.underlying.eGet(ref.parent.underlying).asInstanceOf[EList[AnyRef]]
-                .addAll(ref.index + 1, values.asJava)
-          }*/
+          assert(entry.insertBefore.isEmpty)
+          assert(entry.insertAfter.isEmpty)
+          assert(entry.replaceElements.isEmpty)
         case (ref: SReference, entry) =>
           assert(entry.appendAnnotations.isEmpty)
           assert(entry.removeAnnotations.isEmpty)
           assert(entry.updateAnnotations.isEmpty)
+          assert(entry.replaceElements.isEmpty)
           if (ref.underlying.isContainment && ref.underlying.isMany) {
             val node = {
               val objNode = resource.getNode(ref.parent.underlying).get
@@ -169,7 +160,32 @@ object Diff {
                 }
             }
           } else if (ref.underlying.isContainment) {
-
+            val node = resource.getNode(ref.parent.underlying).get
+            assert(entry.insertAfter.isEmpty)
+            assert(entry.insertBefore.isEmpty)
+            entry.removeElements.foreach {
+              case RemoveElements(_,elems) =>
+                assert(elems.size() == 1)
+                ref.underlying
+                val rel = node.getRelationships(Direction.OUTGOING,Relations.EReference)
+                    .asScala.find(_.getProperty("name") == ref.underlying.getName).get
+                val refNode = rel.getEndNode
+                rel.delete()
+                deleteTransitiveOut(
+                  refNode,
+                  Relations.Contents,Relations.EReference,
+                  de.dfki.cps.egraph.internal.Relations.MEMBER,
+                  de.dfki.cps.egraph.internal.Relations.NEXT_SIBLING
+                )
+            }
+            entry.appendElements.foreach {
+              case AppendElements(_,elems) =>
+                assert(elems.size() == 1)
+                val elem = elems.get(0).asInstanceOf[SObject]
+                val refNode = resource.insertEObjectNode(graph)(elem.underlying)
+                val rel = node.createRelationshipTo(refNode,Relations.EReference)
+                rel.setProperty("name", ref.underlying.getName)
+            }
           }
           else if (ref.underlying.isMany) {
             val node = {
@@ -186,6 +202,7 @@ object Diff {
             entry.removeElements.foreach {
               case RemoveElements(_, elems) =>
                 if (ref.underlying.isOrdered) {
+                  assert(node.hasLabel(de.dfki.cps.egraph.internal.Labels.LIST))
                   val list = new NodeList(node)
                   val nodes = elems.asScala.map {
                     case ln: SLink =>
@@ -193,10 +210,11 @@ object Diff {
                   }
                   nodes.foreach(n => list.remove(list.indexOf(n)))
                 } else {
-                  val set = new NodeSet(node)
-                  val nodes = elems.asScala.map {
+                  assert(node.hasLabel(de.dfki.cps.egraph.internal.Labels.SET))
+                  val set = new NodeSet(node,ref.underlying.isUnique)
+                  elems.asScala.foreach {
                     case ln: SLink =>
-                      set.find(_.getProperty("uri") == ln.label)
+                      assert(set.remove(set.find(_.getProperty("uri") == ln.label).get))
                   }
                 }
             }
@@ -204,7 +222,6 @@ object Diff {
               case AppendElements(_, elems) =>
                 val nodes = elems.asScala.collect {
                   case ln: SLink =>
-                    println("appending " + ln.label)
                     val lnNode = graph.createNode(Labels.EReference)
                     lnNode.setProperty("uri", ln.label)
                     lnNode
@@ -217,6 +234,8 @@ object Diff {
                   set ++= nodes
                 }
             }
+            assert(entry.insertAfter.isEmpty)
+            assert(entry.insertBefore.isEmpty)
           } else {
             assert(false)
           }

@@ -1,7 +1,7 @@
 organization := "de.dfki.cps"
 name := "egraph"
 scalaVersion := "2.11.8"
-version := "0.2.1"
+version := "0.2.2"
 licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
 bintrayOrganization := Some("dfki-cps")
 
@@ -13,5 +13,5 @@ libraryDependencies += "de.dfki.cps" % "specific-dependencies" % "4.6.3"
 libraryDependencies += "org.neo4j" % "neo4j" % "3.1.0"
 libraryDependencies += "de.dfki.cps" %% "secore" % "1.0.2"
 
-libraryDependencies += "de.dfki.cps" %% "specific-sysml" % "0.1.12" % "test"
+libraryDependencies += "de.dfki.cps" %% "specific-sysml" % "0.1.14" % "test"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % "test"

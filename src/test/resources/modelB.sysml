@@ -3,10 +3,10 @@ bdd [package] acs [ACS]
 
 block Building
   references
-    gate: Building[*] <- building
+    gate:     Building[*] <> building
       derive: org_dom.dest
     building: Building[*] <- gate
-    org_dom: Door[*] <- org
+    org_dom:  Door[*]     <- org
   constraints
     inv: not gate->includes(self)
 
@@ -18,7 +18,7 @@ block Person
         self.dap_dom->isEmpty()
   references
     aut: Building[*]
-    dap_dom: Door[0..1] <- dap
+    dap_dom: Door[0..3] <>-- dap
   constraints
     inv: aut->forAll(b|self.aut.building->includes(b))
     inv: aut->includes(dap_dom.dest)
@@ -36,8 +36,8 @@ block Door
   operations
     accept(p1: Person, p2: Person)
       pre: not (green or red)
-      pre: p1.admitted(self) and p2.admitted(self)
       pre: p1 <> p2
+      pre: p1.admitted(self) and p2.admitted(self)
       post: dap = p and p.dap_dom = self
     refuse(p: Person)
       pre: not (green or red)
