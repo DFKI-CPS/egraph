@@ -127,8 +127,8 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       this.deferredResolutions.clear()
       store.graphDb.transaction {
         val resource = Option(store.graphDb.findNode(Labels.Resource,"uri",uri.host()))
-        this.contents.clear()
         resource.foreach { root =>
+          this.contents.clear()
           val contents = new NodeList(root.getSingleRelationship(Relations.Contents,Direction.OUTGOING).getEndNode)
           this.contents.addAll(contents.map(readEObjectNode).asJava)
         }
