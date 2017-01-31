@@ -8,5 +8,8 @@ import org.neo4j.graphdb.Label;
 public enum Labels implements Label {
     Resource,
     EObject,
-    EReference
+    EReference,
+    SResource,
+    SObject,
+    SReference
 }

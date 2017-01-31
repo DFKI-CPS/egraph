@@ -18,7 +18,7 @@ block Person
         self.dap_dom->isEmpty()
   references
     aut: Building[*]
-    dap_dom: Door[0..3] <>-- dap
+    dap_dom: Door[0..3] <> dap
   constraints
     inv: aut->forAll(b|self.aut.building->includes(b))
     inv: aut->includes(dap_dom.dest)

@@ -29,16 +29,47 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
   private val objectMap = mutable.Map.empty[Node,EObject]
 
   def root: Option[Node] = rootNode
-  def getNode(obj: EObject) = nodeMap.get(obj)
-  def getObject(node: Node) = objectMap.get(node)
+  def getNode(obj: EObject): Option[Node] = nodeMap.get(obj)
+  def getObject(node: Node): Option[EObject] = objectMap.get(node)
 
-  def adapt(obj: EObject, node: Node) = {
-    val adapter = new AdapterImpl {
-      override def notifyChanged(msg: Notification): Unit = {
-        println(msg)
+  def deleteDeleted(): Unit = rootNode.foreach { root =>
+    val graph = root.getGraphDatabase
+    graph.transaction {
+      val snodes = root.getRelationships(Relations.OriginResource,Direction.INCOMING)
+        .asScala.map(_.getStartNode)
+      snodes.filter(_.hasRelationship(Relations.Origin,Direction.OUTGOING)).foreach { node =>
+        node.getRelationships.asScala.foreach(_.delete())
+        node.delete()
       }
-    }
-    obj.eAdapters().add(adapter)
+    }.get
+  }
+
+  def resetSemantics(): Unit = rootNode.foreach { root =>
+    val graph = root.getGraphDatabase
+    graph.transaction {
+      val snodes = root.getRelationships(Relations.OriginResource,Direction.INCOMING)
+          .asScala.map(_.getStartNode)
+      snodes.foreach(_.setProperty("$STATUS","DELETED"))
+    }.get
+  }
+
+  def propagateSemantics(): Unit = rootNode.foreach { root =>
+    val graph = root.getGraphDatabase
+    graph.transaction {
+      objectMap.foreach {
+        case (node,obj) =>
+          val graph = node.getGraphDatabase
+          val srel = Option(node.getSingleRelationship(Relations.Origin,Direction.INCOMING))
+          srel.fold {
+            val snode = graph.createNode(Labels.SObject)
+            snode.createRelationshipTo(root,Relations.OriginResource)
+            snode.setProperty("$STATUS","ADDED")
+          } { case srel =>
+            val snode = srel.getStartNode
+            snode.setProperty("$STATUS","PRESERVED")
+          }
+      }
+    }.get
   }
 
   private def readValueNode(node: Node): AnyRef = {
@@ -157,7 +188,8 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
   def insertEObjectNode(graphDb: GraphDatabaseService)(obj: EObject): Node = {
     assert(!nodeMap.isDefinedAt(obj))
     val node = graphDb.createNode(Labels.EObject)
-    nodeMap += obj -> node
+    nodeMap   += obj -> node
+    objectMap += node -> obj
     node.setProperty("eClass", EcoreUtil.getURI(obj.eClass()).toString)
     obj.eClass().getEAllStructuralFeatures.asScala
       .filter(f => !f.isTransient && !f.isDerived && !f.isVolatile).filter(obj.eIsSet).foreach {
@@ -255,7 +287,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
     if (uri.scheme() == "graph" && outputStream.isInstanceOf[EGraphStoreOutput]) {
       val store = outputStream.asInstanceOf[EGraphStoreOutput].store
       store.graphDb.transaction {
-        // delete old resource if existes
+        // delete old resource if exists
         Option(store.graphDb.findNode(Labels.Resource,"uri",uri.host()))
           .foreach(deleteTransitiveOut(_,Relations.Contents,internal.Relations.NEXT_SIBLING,internal.Relations.MEMBER,Relations.EReference))
         // create new resource

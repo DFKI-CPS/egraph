@@ -13,5 +13,5 @@ libraryDependencies += "de.dfki.cps" % "specific-dependencies" % "4.6.3"
 libraryDependencies += "org.neo4j" % "neo4j" % "3.1.0"
 libraryDependencies += "de.dfki.cps" %% "secore" % "1.0.2"
 
-libraryDependencies += "de.dfki.cps" %% "specific-sysml" % "0.1.14" % "test"
+libraryDependencies += "de.dfki.cps" %% "specific-sysml" % "0.1.16" % "test"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % "test"

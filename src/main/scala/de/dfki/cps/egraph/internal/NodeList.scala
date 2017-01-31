@@ -12,8 +12,9 @@ class NodeList(val root: Node) extends mutable.Buffer[Node] {
     case 0 =>
       root.createRelationshipTo(root, Relations.NEXT_SIBLING)
       length = 0
+    case 1 => // ok
     case 2 => // ok
-    case n => throw new IllegalArgumentException(s"root node has degree $n. may only be 0 or 2")
+    case n => throw new IllegalArgumentException(s"root node has degree $n. may only be 0, 1 or 2")
   }
 
   def apply(n: Int): Node = {

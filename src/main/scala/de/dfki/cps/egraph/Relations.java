@@ -8,5 +8,9 @@ import org.neo4j.graphdb.RelationshipType;
 public enum Relations implements RelationshipType {
     Contents,
     EReference,
-    EReferenceLink
+    EReferenceLink,
+    Origin,
+    OriginResource,
+    SContents,
+    SLink
 }
