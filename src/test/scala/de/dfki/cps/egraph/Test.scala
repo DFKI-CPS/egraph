@@ -5,7 +5,7 @@ import java.util
 
 import de.dfki.cps.egraph.stools.Diff
 import de.dfki.cps.secore.SResource
-import de.dfki.cps.specific.sysml
+import de.dfki.cps.specific.{SysML, sysml}
 import de.dfki.cps.stools.STools
 import de.dfki.cps.stools.similarityspec.SimilaritySpec
 import org.eclipse.emf.common.util.URI
@@ -26,15 +26,12 @@ class Test extends FunSuite with Matchers {
     val store = new EGraphStore(dir)
     store.attach(rs)
     sysml.Synthesis.prepareLibrary(rs)
-    val modelA = sysml.Model.load(getClass.getClassLoader.getResource("modelA.sysml").toURI,"example")(rs)
-    val modelB = sysml.Model.load(getClass.getClassLoader.getResource("modelB.sysml").toURI,"example")(rs)
-    val modelB2 = sysml.Model.load(getClass.getClassLoader.getResource("modelB.sysml").toURI,"example")(rs)
-    val resA = new ResourceImpl()
+    val resA = rs.createResource(URI.createFileURI("tempA.ecore"))
     val resB = rs.createResource(URI.createURI("graph://test"))
-    val resB2 = new ResourceImpl()
-    resA.getContents.addAll(modelA.getContents)
-    resB.getContents.addAll(modelB.getContents)
-    resB2.getContents.addAll(modelB2.getContents)
+    val resB2 = rs.createResource(URI.createFileURI("tempB.ecore"))
+    val modelA = SysML.load(new File(getClass.getClassLoader.getResource("modelA.sysml").getFile), resA)
+    val modelB = SysML.load(new File(getClass.getClassLoader.getResource("modelB.sysml").getFile), resB)
+    val modelB2 = SysML.load(new File(getClass.getClassLoader.getResource("modelB.sysml").getFile), resB2)
 
     val stool = de.dfki.cps.secore.stools.getSTool("specific")
 

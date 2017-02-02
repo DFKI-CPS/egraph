@@ -22,13 +22,42 @@ object Diff {
     graph.transaction {
       editScript.entries.foreach {
         case (res: SResource, entry) =>
+          val node = resource.root.get.getSingleRelationship(Relations.Contents,Direction.OUTGOING).getEndNode
           assert(entry.appendAnnotations.isEmpty)
           assert(entry.removeAnnotations.isEmpty)
           assert(entry.updateAnnotations.isEmpty)
-          assert(entry.insertAfter.isEmpty)
-          assert(entry.insertBefore.isEmpty)
-          assert(entry.appendElements.isEmpty)
-          assert(entry.removeElements.isEmpty)
+          entry.removeElements.foreach {
+            case RemoveElements(_, elems) =>
+              val values = elems.asScala.map {
+                case o: SObject => resource.getNode(o.underlying).get
+              }.toSet
+              val list = new NodeList(node)
+              list.removeAll(values.contains)
+          }
+          entry.insertBefore.foreach {
+            case (_, InsertBefore(h: SObject,elems)) =>
+              val values = elems.asScala.map {
+                case o: SObject => resource.insertEObjectNode(graph)(o.underlying)
+              }
+              val list = new NodeList(node)
+              list.insertAll(list.indexOf(resource.getNode(h.underlying).get), values)
+          }
+          entry.insertAfter.foreach {
+            case (_, InsertAfter(h: SObject,elems)) =>
+              val values = elems.asScala.map {
+                case o: SObject => resource.insertEObjectNode(graph)(o.underlying)
+              }
+              val list = new NodeList(node)
+              list.insertAll(list.indexOf(resource.getNode(h.underlying).get) + 1, values)
+          }
+          entry.appendElements.foreach {
+            case AppendElements(_, elems) =>
+              val values = elems.asScala.map {
+                case o: SObject => resource.insertEObjectNode(graph)(o.underlying)
+              }
+              val list = new NodeList(node)
+              list.appendAll(values)
+          }
           assert(entry.replaceElements.isEmpty)
         case (obj: SObject, entry) =>
           val node = resource.getNode(obj.underlying).get
