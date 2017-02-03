@@ -159,6 +159,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
       store.graphDb.transaction {
         val resource = Option(store.graphDb.findNode(Labels.Resource,"uri",uri.host()))
         resource.foreach { root =>
+          this.getContents()
           this.contents.clear()
           val contents = new NodeList(root.getSingleRelationship(Relations.Contents,Direction.OUTGOING).getEndNode)
           this.contents.addAll(contents.map(readEObjectNode).asJava)
@@ -201,6 +202,7 @@ class GraphResource(uri: URI) extends ResourceImpl(uri) {
             val node = graphDb.createNode(Labels.EReference)
             val uri = if (vo.eResource() == obj.eResource())
               obj.eResource().getURIFragment(vo)
+            else EcoreUtil.getURI(vo).toString
             node.setProperty("uri", uri)
             node
           }
